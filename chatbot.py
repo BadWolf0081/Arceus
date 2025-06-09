@@ -26,7 +26,7 @@ OPENAI_API_KEY = config.get("openai", "api_key")
 waiting_image_url = config.get("bot", "waiting_image_url")
 
 # ------------------------------------------------------------------
-# Set up OpenAI API
+# Set up OpenAI API (no change needed for AsyncOpenAI)
 # ------------------------------------------------------------------
 openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
@@ -339,8 +339,9 @@ async def ask(ctx, *, query: str = None):
         while len(str(context)) > max_token_limit:
             context.pop(1)
 
+        # Use the latest OpenAI chat completions endpoint
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-2024-08-06",
+            model="gpt-4o",
             messages=context
         )
         reply = response.choices[0].message.content.strip()
@@ -468,11 +469,13 @@ async def image(ctx, *, prompt: str = None):
 
     try:
         combined_prompt = " ".join(msg["content"] for msg in context if msg["role"] == "user")
+        # Use the latest OpenAI image generation endpoint
         response = await openai_client.images.generate(
-            model="gpt-image-1",
+            model="dall-e-3",
             prompt=combined_prompt,
             n=1,
-            size="1024x1024"
+            size="1024x1024",
+            response_format="url"
         )
         image_url = response.data[0].url
         user_last_image[user_id] = image_url
