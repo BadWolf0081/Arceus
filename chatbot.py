@@ -536,7 +536,7 @@ async def image(ctx, *, prompt: str = None):
 
     try:
         combined_prompt = " ".join(msg["content"] for msg in context if msg["role"] == "user")
-        # Use the latest OpenAI image generation endpoint
+        # Use the latest OpenAI image generation endpoint for gpt-image-1
         response = await openai_client.images.generate(
             model="gpt-image-1",
             prompt=combined_prompt,
@@ -544,6 +544,7 @@ async def image(ctx, *, prompt: str = None):
             size="1024x1024",
             response_format="url"
         )
+        # The new API returns a list of images in response.data
         image_url = response.data[0].url
         user_last_image[user_id] = image_url
         await waiting_message.edit(content=f"Here is your image: [Image Link]({image_url})")
@@ -585,7 +586,7 @@ async def edit(ctx, *, prompt: str = None):
             processed_image_data = f.read()
 
         with BytesIO() as mask_stream:
-            mask = Image.new("L", (1792, 1024), 0)
+            mask = Image.new("L", (1024, 1024), 0)
             draw = ImageDraw.Draw(mask)
             draw.rectangle([400, 600, 700, 800], fill=255)
             mask.save(mask_stream, format="PNG")
@@ -596,13 +597,15 @@ async def edit(ctx, *, prompt: str = None):
 
         waiting_message = await ctx.send("Editing your image, please wait... 🔄")
 
+        # Use the latest OpenAI image edit endpoint for gpt-image-1
         response = await openai_client.images.edit(
             model="gpt-image-1",
             image=processed_image_data,
             mask=mask_data,
             prompt=prompt,
             n=1,
-            size="1024x1024"
+            size="1024x1024",
+            response_format="url"
         )
         edited_image_url = response.data[0].url
         await waiting_message.edit(content=f"Here is your edited image: [Image Link]({edited_image_url})")
