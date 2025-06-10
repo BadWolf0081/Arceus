@@ -331,12 +331,17 @@ async def answer(ctx, *, user_answer: str = None):
     time_penalty = int(elapsed // 15) * 5
     points = max(0, 100 - time_penalty)
 
+    # Initialize prize pool if not present
+    if "prize_pool" not in current_trivia:
+        current_trivia["prize_pool"] = 0
+
     # Check answer
     if user_answer.lower().strip() == current_trivia["answer"]:
         players_with_correct_answers.add(ctx.author.id)
-        # Award points
+        # Award points (including prize pool)
         prev_points = points_dict.get(user_id, 0)
-        new_points = prev_points + points
+        total_award = points + current_trivia.get("prize_pool", 0)
+        new_points = prev_points + total_award
         points_dict[user_id] = new_points
         save_points(points_dict)
 
@@ -346,18 +351,25 @@ async def answer(ctx, *, user_answer: str = None):
         if new_level > prev_level:
             await ctx.send(f"🎉 Congratulations {ctx.author.mention}, you reached **Level {new_level}** with {new_points} points! 🎉")
 
-        await ctx.send(f"**Correct!** {ctx.author.mention}, you earned {points} points. (Total: {new_points})")
+        if current_trivia["prize_pool"] > 0:
+            await ctx.send(
+                f"**Correct!** {ctx.author.mention}, you earned {points} points + {current_trivia['prize_pool']} bonus points from the prize pool. (Total: {new_points})"
+            )
+        else:
+            await ctx.send(f"**Correct!** {ctx.author.mention}, you earned {points} points. (Total: {new_points})")
         current_trivia = None
         trivia_active = False
     else:
-        # Incorrect answer: subtract 10 points, but not below 0
+        # Incorrect answer: subtract 10 points, but not below 0, and add to prize pool
         prev_points = points_dict.get(user_id, 0)
+        deduction = min(10, prev_points)
         new_points = max(0, prev_points - 10)
         points_dict[user_id] = new_points
         save_points(points_dict)
         current_trivia["incorrect_count"] += 1
+        current_trivia["prize_pool"] = current_trivia.get("prize_pool", 0) + deduction
         await ctx.send(
-            f"**Incorrect**, {ctx.author.mention}! 10 points have been deducted. "
+            f"**Incorrect**, {ctx.author.mention}! 10 points have been deducted and added to the prize pool for this question. "
             f"(Total: {new_points}) Try again."
         )
 
