@@ -599,13 +599,12 @@ async def edit(ctx, *, prompt: str = None):
         await ctx.send("No previously generated image found to edit. Please generate an image first using !image.")
         return
 
-    # Use the last generated image as the source
     image_path = user_last_image[user_id]
     try:
         with open(image_path, "rb") as f:
             image_data = f.read()
 
-        # For demonstration, create a blank mask (edit the whole image)
+        # Create a blank mask (edit the whole image)
         mask = Image.new("L", (1024, 1024), 255)
         with BytesIO() as mask_stream:
             mask.save(mask_stream, format="PNG")
@@ -614,30 +613,27 @@ async def edit(ctx, *, prompt: str = None):
 
         waiting_message = await ctx.send("Editing your image, please wait... 🔄")
 
+        # Pass files as (filename, bytes, mimetype)
         response = await openai_client.images.edit(
             model="gpt-image-1",
-            image=image_data,
-            mask=mask_data,
+            image=("image.png", image_data, "image/png"),
+            mask=("mask.png", mask_data, "image/png"),
             prompt=prompt,
             n=1,
             size="1024x1024"
         )
-        # gpt-image-1 returns base64-encoded images in response.data[0].b64_json
         image_b64 = getattr(response.data[0], "b64_json", None)
         if not image_b64:
             await waiting_message.edit(content="Sorry, no edited image was returned by the API.")
             return
 
-        # Decode and save the edited image to a file
         edited_bytes = base64.b64decode(image_b64)
         edited_filename = f"gpt_image_edit_{user_id}.png"
         with open(edited_filename, "wb") as f:
             f.write(edited_bytes)
 
-        # Update the user's last image to the edited one
         user_last_image[user_id] = edited_filename
 
-        # Send the edited image file to Discord
         file = discord.File(edited_filename, filename="edited.png")
         await waiting_message.edit(content="Here is your edited image:")
         await ctx.send(file=file)
