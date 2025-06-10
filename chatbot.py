@@ -13,6 +13,7 @@ import asyncio
 import aiohttp
 import configparser
 import time
+import base64
 
 # ------------------------------------------------------------------
 # Load configuration from config.ini
@@ -539,16 +540,30 @@ async def image(ctx, *, prompt: str = None):
 
     try:
         combined_prompt = " ".join(msg["content"] for msg in context if msg["role"] == "user")
-        # Remove response_format for gpt-image-1
         response = await openai_client.images.generate(
             model="gpt-image-1",
             prompt=combined_prompt,
             n=1,
             size="1024x1024"
         )
-        image_url = response.data[0].url
-        user_last_image[user_id] = image_url
-        await waiting_message.edit(content=f"Here is your image: [Image Link]({image_url})")
+        # gpt-image-1 returns base64-encoded images in response.data[0].b64_json
+        image_b64 = getattr(response.data[0], "b64_json", None)
+        if not image_b64:
+            await waiting_message.edit(content="Sorry, no image was returned by the API.")
+            return
+
+        # Decode and save the image to a file
+        image_bytes = base64.b64decode(image_b64)
+        filename = f"gpt_image_{user_id}.png"
+        with open(filename, "wb") as f:
+            f.write(image_bytes)
+
+        user_last_image[user_id] = filename
+
+        # Send the image file to Discord
+        file = discord.File(filename, filename="generated.png")
+        await waiting_message.edit(content="Here is your image:")
+        await ctx.send(file=file)
     except Exception as e:
         if "content_policy_violation" in str(e):
             await waiting_message.edit(content=(
