@@ -538,7 +538,7 @@ async def image(ctx, *, prompt: str = None):
         combined_prompt = " ".join(msg["content"] for msg in context if msg["role"] == "user")
         # Use the latest OpenAI image generation endpoint
         response = await openai_client.images.generate(
-            model="dall-e-3",
+            model="gpt-image-1",
             prompt=combined_prompt,
             n=1,
             size="1024x1024",
