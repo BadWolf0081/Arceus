@@ -156,6 +156,15 @@ async def trivia(ctx):
 
     global current_trivia, trivia_active, players_with_correct_answers
 
+    # If a trivia question is already active, repeat the same question
+    if trivia_active and current_trivia is not None:
+        await ctx.send(
+            f"There is still an active trivia question!\n\n"
+            f"{current_trivia['question']}\n\n"
+            f"Use `!answer <Pokémon Name>` to answer!"
+        )
+        return
+
     # Clear any previous correct answers for this new question
     players_with_correct_answers.clear()
 
@@ -291,7 +300,6 @@ async def answer(ctx, *, user_answer: str = None):
     """
     Command to answer the currently active trivia question.
     Once someone answers correctly, we stop accepting answers (clear current_trivia).
-    If a user is already listed in the trivia_winners.json file, do not let them answer at all
     """
     if not is_allowed_channel(ctx.channel.id):
         return
@@ -319,14 +327,9 @@ async def answer(ctx, *, user_answer: str = None):
     now = time.time()
     elapsed = now - current_trivia["start_time"]
 
-    # Reduce points for time passed (every 15s = -5 points)
+    # Points for correct answer: 100 - (5 points per 15s elapsed)
     time_penalty = int(elapsed // 15) * 5
     points = max(0, 100 - time_penalty)
-
-    # Reduce points for incorrect answers so far (each halves the points)
-    incorrect_count = current_trivia["incorrect_count"]
-    if incorrect_count > 0:
-        points = max(1, points // (2 ** incorrect_count))
 
     # Check answer
     if user_answer.lower().strip() == current_trivia["answer"]:
@@ -347,9 +350,16 @@ async def answer(ctx, *, user_answer: str = None):
         current_trivia = None
         trivia_active = False
     else:
-        # Incorrect answer: halve points for this question
+        # Incorrect answer: subtract 10 points, but not below 0
+        prev_points = points_dict.get(user_id, 0)
+        new_points = max(0, prev_points - 10)
+        points_dict[user_id] = new_points
+        save_points(points_dict)
         current_trivia["incorrect_count"] += 1
-        await ctx.send(f"**Incorrect**, {ctx.author.mention}! Try again. (Points for this question are now halved.)")
+        await ctx.send(
+            f"**Incorrect**, {ctx.author.mention}! 10 points have been deducted. "
+            f"(Total: {new_points}) Try again."
+        )
 
 # ------------------------------------------------------------------
 # Example of Other Commands (Ask, Strategy, etc.)
