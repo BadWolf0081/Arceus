@@ -262,10 +262,13 @@ async def trivia(ctx):
         evolves_from_name = evolves_from["name"]
         hints.append(f"This Pokémon evolved from **{evolves_from_name}**.")
 
-    # 3) Randomly pick 2 or 3 hints
+    # 3) Randomly pick 4 or 5 hints
     num_hints = random.randint(4, 5)
     random.shuffle(hints)
-    selected_hints = hints[:num_hints] if len(hints) >= num_hints : hints
+    if len(hints) >= num_hints:
+        selected_hints = hints[:num_hints]
+    else:
+        selected_hints = hints
 
     if not selected_hints:
         # Fallback if no hints are available (very unlikely)
