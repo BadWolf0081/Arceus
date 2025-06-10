@@ -585,6 +585,9 @@ async def reset(ctx):
 
 @bot.command()
 async def edit(ctx, *, prompt: str = None):
+    """
+    Edit the last generated image using gpt-image-1 and a user-supplied prompt.
+    """
     if not is_allowed_channel(ctx.channel.id):
         return
     if not prompt:
@@ -593,39 +596,51 @@ async def edit(ctx, *, prompt: str = None):
 
     user_id = str(ctx.author.id)
     if user_id not in user_last_image:
-        await ctx.send("No previously generated image found to edit.")
+        await ctx.send("No previously generated image found to edit. Please generate an image first using !image.")
         return
 
-    image_path = "processed_image.png"  # Adjust as needed
+    # Use the last generated image as the source
+    image_path = user_last_image[user_id]
     try:
         with open(image_path, "rb") as f:
-            processed_image_data = f.read()
+            image_data = f.read()
 
+        # For demonstration, create a blank mask (edit the whole image)
+        mask = Image.new("L", (1024, 1024), 255)
         with BytesIO() as mask_stream:
-            mask = Image.new("L", (1024, 1024), 0)
-            draw = ImageDraw.Draw(mask)
-            draw.rectangle([400, 600, 700, 800], fill=255)
             mask.save(mask_stream, format="PNG")
             mask_stream.seek(0)
             mask_data = mask_stream.read()
 
-        mask.save("debug_mask.png")
-
         waiting_message = await ctx.send("Editing your image, please wait... 🔄")
 
-        # Use the latest OpenAI image edit endpoint for gpt-image-1
         response = await openai_client.images.edit(
             model="gpt-image-1",
-            image=processed_image_data,
+            image=image_data,
             mask=mask_data,
             prompt=prompt,
             n=1,
-            size="1024x1024",
-            response_format="url"
+            size="1024x1024"
         )
-        edited_image_url = response.data[0].url
-        await waiting_message.edit(content=f"Here is your edited image: [Image Link]({edited_image_url})")
+        # gpt-image-1 returns base64-encoded images in response.data[0].b64_json
+        image_b64 = getattr(response.data[0], "b64_json", None)
+        if not image_b64:
+            await waiting_message.edit(content="Sorry, no edited image was returned by the API.")
+            return
 
+        # Decode and save the edited image to a file
+        edited_bytes = base64.b64decode(image_b64)
+        edited_filename = f"gpt_image_edit_{user_id}.png"
+        with open(edited_filename, "wb") as f:
+            f.write(edited_bytes)
+
+        # Update the user's last image to the edited one
+        user_last_image[user_id] = edited_filename
+
+        # Send the edited image file to Discord
+        file = discord.File(edited_filename, filename="edited.png")
+        await waiting_message.edit(content="Here is your edited image:")
+        await ctx.send(file=file)
     except Exception as e:
         await ctx.send(f"An error occurred while editing the image: {e}")
 
