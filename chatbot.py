@@ -265,7 +265,7 @@ async def trivia(ctx):
     # 3) Randomly pick 2 or 3 hints
     num_hints = random.randint(4, 5)
     random.shuffle(hints)
-    selected_hints = hints[:num_hints] if len(hints) >= num_hints else hints
+    selected_hints = hints[:num_hints] if len(hints) >= num_hints : hints
 
     if not selected_hints:
         # Fallback if no hints are available (very unlikely)
@@ -536,15 +536,13 @@ async def image(ctx, *, prompt: str = None):
 
     try:
         combined_prompt = " ".join(msg["content"] for msg in context if msg["role"] == "user")
-        # Use the latest OpenAI image generation endpoint for gpt-image-1
+        # Remove response_format for gpt-image-1
         response = await openai_client.images.generate(
             model="gpt-image-1",
             prompt=combined_prompt,
             n=1,
-            size="1024x1024",
-            response_format="url"
+            size="1024x1024"
         )
-        # The new API returns a list of images in response.data
         image_url = response.data[0].url
         user_last_image[user_id] = image_url
         await waiting_message.edit(content=f"Here is your image: [Image Link]({image_url})")
