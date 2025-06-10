@@ -12,6 +12,7 @@ from io import BytesIO
 import asyncio
 import aiohttp
 import configparser
+import time
 
 # ------------------------------------------------------------------
 # Load configuration from config.ini
@@ -42,12 +43,44 @@ intents.messages = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ------------------------------------------------------------------
+# Points System Helpers
+# ------------------------------------------------------------------
+POINTS_FILE = "points.json"
+
+def load_points():
+    if not os.path.exists(POINTS_FILE):
+        return {}
+    try:
+        with open(POINTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+def save_points(points_dict):
+    with open(POINTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(points_dict, f, indent=2, ensure_ascii=False)
+
+def get_level(points):
+    level = 1
+    threshold = 500
+    while points >= threshold:
+        level += 1
+        threshold *= 2
+    return level
+
+def get_next_level_threshold(points):
+    threshold = 500
+    while points >= threshold:
+        threshold *= 2
+    return threshold
+
 # ---------------------------
-# Global Trivia Variables
+# Global Trivia Variables (updated for points)
 # ---------------------------
-current_trivia = None  # Will store {'question': str, 'answer': str} or None
+current_trivia = None  # {'question': str, 'answer': str, 'start_time': float, 'current_points': int, 'incorrect_count': int}
+trivia_active = False
 players_with_correct_answers = set()
-trivia_active = False  # Whether a question is currently active
 
 # ------------------------------------------------------------------
 # Optional JSON Helpers for storing winners
@@ -238,7 +271,10 @@ async def trivia(ctx):
     # 4) Save final question & answer in global context
     current_trivia = {
         "question": question_text,
-        "answer": pokemon_name  # We already lowered it above
+        "answer": pokemon_name,  # We already lowered it above
+        "start_time": time.time(),
+        "current_points": 100,
+        "incorrect_count": 0
     }
 
     # Mark the trivia as active
@@ -271,40 +307,49 @@ async def answer(ctx, *, user_answer: str = None):
         await ctx.send("Please provide a Pokémon name after `!answer`.")
         return
 
-    # 1) Check if user is already in trivia_winners.json
-    winners_list = load_trivia_winners()  # your function that returns a list of {"name": "...", "id": "..."}
-    user_exists = any(str(ctx.author.id) == str(w["id"]) for w in winners_list)
-    
-    # If they already exist in the winners file, remind them but still allow them to answer
-    if user_exists:
-        await ctx.send("You have already won in a previous session, so you cannot be entered into the draw again, but you can still answer.")
+    user_id = str(ctx.author.id)
+    points_dict = load_points()
 
-    # If they're not in the JSON winners file, check if they've already answered this question
+    # If already answered correctly this round
     if ctx.author.id in players_with_correct_answers:
         await ctx.send("You've already answered correctly for this question. Only one entry per member!")
         return
 
-    # Finally, compare (case-insensitive)
-    if user_answer.lower() == current_trivia["answer"]:
-        # Mark them as correct for this session
+    # Calculate time since question posted
+    now = time.time()
+    elapsed = now - current_trivia["start_time"]
+
+    # Reduce points for time passed (every 15s = -5 points)
+    time_penalty = int(elapsed // 15) * 5
+    points = max(0, 100 - time_penalty)
+
+    # Reduce points for incorrect answers so far (each halves the points)
+    incorrect_count = current_trivia["incorrect_count"]
+    if incorrect_count > 0:
+        points = max(1, points // (2 ** incorrect_count))
+
+    # Check answer
+    if user_answer.lower().strip() == current_trivia["answer"]:
         players_with_correct_answers.add(ctx.author.id)
+        # Award points
+        prev_points = points_dict.get(user_id, 0)
+        new_points = prev_points + points
+        points_dict[user_id] = new_points
+        save_points(points_dict)
 
-        # Add them to the winners file now if they haven't already won
-        if not user_exists:
-            winners_list.append({
-                "name": ctx.author.display_name,
-                "id": str(ctx.author.id)
-            })
-            save_trivia_winners(winners_list)
+        # Level up check
+        prev_level = get_level(prev_points)
+        new_level = get_level(new_points)
+        if new_level > prev_level:
+            await ctx.send(f"🎉 Congratulations {ctx.author.mention}, you reached **Level {new_level}** with {new_points} points! 🎉")
 
-        await ctx.send(f"**Correct!** {ctx.author.mention}, you've been entered into the draw.")
-
-        # Stop accepting answers for this question
+        await ctx.send(f"**Correct!** {ctx.author.mention}, you earned {points} points. (Total: {new_points})")
         current_trivia = None
         trivia_active = False
-
     else:
-        await ctx.send(f"**Incorrect**, {ctx.author.mention}! Try again.")
+        # Incorrect answer: halve points for this question
+        current_trivia["incorrect_count"] += 1
+        await ctx.send(f"**Incorrect**, {ctx.author.mention}! Try again. (Points for this question are now halved.)")
 
 # ------------------------------------------------------------------
 # Example of Other Commands (Ask, Strategy, etc.)
@@ -566,6 +611,22 @@ async def translate(ctx, language: str, *, text: str = None):
         await ctx.send(f"**Translated to {language}:**\n{translation}")
     except Exception as e:
         await ctx.send(f"An error occurred while translating: {e}")
+
+# ------------------------------------------------------------------
+# Points Command
+# ------------------------------------------------------------------
+@bot.command()
+async def points(ctx):
+    user_id = str(ctx.author.id)
+    points_dict = load_points()
+    user_points = points_dict.get(user_id, 0)
+    user_level = get_level(user_points)
+    next_level = get_next_level_threshold(user_points)
+    await ctx.send(
+        f"{ctx.author.mention}, you have **{user_points}** points. "
+        f"Level: **{user_level}**. "
+        f"Next level at {next_level} points."
+    )
 
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
