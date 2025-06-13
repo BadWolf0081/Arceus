@@ -683,7 +683,7 @@ async def points(ctx):
 @bot.command()
 async def leaderboard(ctx):
     """
-    Show the top 10 users by points in a Discord embed.
+    Show the top 10 users by points in a Discord embed, using their Discord names if possible.
     """
     points_dict = load_points()
     if not points_dict:
@@ -699,17 +699,19 @@ async def leaderboard(ctx):
         description="Here are the top 10 users by points!"
     )
 
+    leaderboard_text = ""
     for idx, (user_id, points) in enumerate(top_users, start=1):
         level = get_level(points)
-        # Try to get the member's display name, fallback to user ID if not found
         member = ctx.guild.get_member(int(user_id))
+        # Use display name if possible, else fallback to User <id>
         name = member.display_name if member else f"User {user_id}"
-        embed.add_field(
-            name=f"{idx}. {name}",
-            value=f"Level: **{level}**\nPoints: **{points}**",
-            inline=False
+        leaderboard_text += (
+            f"{idx}. {name}\n"
+            f"Level: {level}\n"
+            f"Points: {points}\n"
         )
 
+    embed.description = f"Here are the top 10 users by points!\n\n{leaderboard_text}"
     await ctx.send(embed=embed)
 
 # Finally, run the bot
