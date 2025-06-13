@@ -680,5 +680,37 @@ async def points(ctx):
         f"Next level at {next_level} points."
     )
 
+@bot.command()
+async def leaderboard(ctx):
+    """
+    Show the top 10 users by points in a Discord embed.
+    """
+    points_dict = load_points()
+    if not points_dict:
+        await ctx.send("No points have been recorded yet.")
+        return
+
+    # Sort users by points descending
+    top_users = sorted(points_dict.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    embed = discord.Embed(
+        title="🏆 Leaderboard: Top 10 Trainers 🏆",
+        color=discord.Color.gold(),
+        description="Here are the top 10 users by points!"
+    )
+
+    for idx, (user_id, points) in enumerate(top_users, start=1):
+        level = get_level(points)
+        # Try to get the member's display name, fallback to user ID if not found
+        member = ctx.guild.get_member(int(user_id))
+        name = member.display_name if member else f"User {user_id}"
+        embed.add_field(
+            name=f"{idx}. {name}",
+            value=f"Level: **{level}**\nPoints: **{points}**",
+            inline=False
+        )
+
+    await ctx.send(embed=embed)
+
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
