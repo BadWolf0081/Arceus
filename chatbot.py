@@ -703,8 +703,14 @@ async def leaderboard(ctx):
     for idx, (user_id, points) in enumerate(top_users, start=1):
         level = get_level(points)
         member = ctx.guild.get_member(int(user_id))
-        # Use display name if possible, else fallback to User <id>
-        name = member.display_name if member else f"User {user_id}"
+        if member:
+            name = member.display_name
+        else:
+            try:
+                user = await bot.fetch_user(int(user_id))
+                name = user.name
+            except Exception:
+                name = f"User {user_id}"
         leaderboard_text += (
             f"{idx}. {name}\n"
             f"Level: {level}\n"
