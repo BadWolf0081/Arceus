@@ -783,9 +783,8 @@ async def scanstatus(ctx):
                             return False, f" (health {resp.status})"
                         health_data = await resp.json()
                         health_status = health_data.get("status", "unknown")
-                        health_version = health_data.get("version", "unknown")
+                        health_version = health_data.get("version")
                     # 3. Check local status endpoint for workers
-                    status_url = "http://127.0.0.1:7272/status/"
                     print(f"[scanstatus] {desc}: Checking local status at {status_url}")
                     async with session.get(status_url, timeout=8) as resp:
                         status_text = await resp.text()
@@ -806,7 +805,8 @@ async def scanstatus(ctx):
                                 total_expected += wm.get("expected_workers", 0)
                                 total_active += wm.get("active_workers", 0)
                         # Compose the status string
-                        return True, f" (status: {health_status}, version: {health_version}) ({total_active}/{total_expected} workers)"
+                        version_str = f", version: {health_version}" if health_version else ""
+                        return True, f" (status: {health_status}{version_str}) ({total_active}/{total_expected} workers)"
             except Exception as e:
                 import traceback
                 print(f"[scanstatus] {desc}: Exception during public/local status fetch: {e}")
