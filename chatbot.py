@@ -755,27 +755,38 @@ async def scanstatus(ctx):
         # Special handling for Worker Controller: check website, then local status
         if desc == "Worker Controller":
             public_url = "https://dragonite2.pokescans.ca"
-            local_status_url = "http://127.0.0.1:7272/status/"
+            health_url = "http://127.0.0.1:7272/health/"
+            status_url = "http://127.0.0.1:7272/status/"
             try:
                 async with aiohttp.ClientSession() as session:
+                    # 1. Check if the public website is up
                     print(f"[scanstatus] {desc}: Checking public site at {public_url}")
                     async with session.get(public_url, timeout=8) as resp:
                         print(f"[scanstatus] {desc}: Public site GET {public_url} status {resp.status}")
                         if resp.status != 200:
                             print(f"[scanstatus] {desc}: Public site check failed with status {resp.status}")
                             return False, f" (public site {resp.status})"
-                    # 2. If public site is up, check local status endpoint
-                    print(f"[scanstatus] {desc}: Checking local status at {local_status_url}")
-                    async with session.get(local_status_url, timeout=8) as resp:
+                    # 2. Check health endpoint for status/version
+                    print(f"[scanstatus] {desc}: Checking health at {health_url}")
+                    async with session.get(health_url, timeout=8) as resp:
+                        if resp.status != 200:
+                            print(f"[scanstatus] {desc}: Health check failed with status {resp.status}")
+                            return False, f" (health {resp.status})"
+                        health_data = await resp.json()
+                        health_status = health_data.get("status", "unknown")
+                        health_version = health_data.get("version", "unknown")
+                    # 3. Check local status endpoint for workers
+                    print(f"[scanstatus] {desc}: Checking local status at {status_url}")
+                    async with session.get(status_url, timeout=8) as resp:
                         status_text = await resp.text()
-                        print(f"[scanstatus] {desc}: Status GET {local_status_url} status {resp.status}, body: {status_text[:200]}")
+                        print(f"[scanstatus] {desc}: Status GET {status_url} status {resp.status}, body: {status_text[:200]}")
                         if resp.status not in (200, 202):
-                            print(f"[scanstatus] {desc}: Status fetch failed with status {resp.status} at {local_status_url}")
+                            print(f"[scanstatus] {desc}: Status fetch failed with status {resp.status} at {status_url}")
                             return False, f" (status fetch failed: {resp.status})"
                         try:
                             data = await resp.json()
                         except Exception as json_exc:
-                            print(f"[scanstatus] {desc}: Failed to parse JSON from status at {local_status_url}: {json_exc}")
+                            print(f"[scanstatus] {desc}: Failed to parse JSON from status at {status_url}: {json_exc}")
                             return False, " (status not JSON)"
                         # Sum up all expected_workers and active_workers from all areas and all worker_managers
                         total_expected = 0
@@ -784,7 +795,8 @@ async def scanstatus(ctx):
                             for wm in area.get("worker_managers", []):
                                 total_expected += wm.get("expected_workers", 0)
                                 total_active += wm.get("active_workers", 0)
-                        return True, f" ({total_active}/{total_expected} workers)"
+                        # Compose the status string
+                        return True, f" (status: {health_status}, version: {health_version}) ({total_active}/{total_expected} workers)"
             except Exception as e:
                 import traceback
                 print(f"[scanstatus] {desc}: Exception during public/local status fetch: {e}")
