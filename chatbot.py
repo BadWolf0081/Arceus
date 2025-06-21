@@ -730,12 +730,16 @@ async def scanstatus(ctx):
         ("https://map.pokescans.ca", "Map Services"),
         ("https://rotom2.pokescans.ca", "Device Controller"),
         ("https://dragonite2.pokescans.ca", "Worker Controller"),
+        # Data Receiver will be added after Worker Controller
         ("https://juniper2.pokescans.ca", "Juniper Site"),
     ]
 
     status_emojis = {True: "🟩", False: "❌"}
     site_status = {url: False for url, _ in sites}
-    dragonite_workers_text = ""
+
+    # Insert Data Receiver after Worker Controller
+    data_receiver_index = 3  # After Worker Controller (index 2)
+    sites.insert(data_receiver_index, ("http://127.0.0.1:9001/health", "Data Receiver"))
 
     # Initial embed with all red X's
     embed = discord.Embed(
@@ -755,7 +759,7 @@ async def scanstatus(ctx):
         # Special handling for Worker Controller: check website, then local status
         if desc == "Worker Controller":
             public_url = "https://dragonite2.pokescans.ca"
-            health_url = "http://127.0.0.1:7272/health/"
+            health_url = "http://127.0.0.1:9001/health"
             status_url = "http://127.0.0.1:7272/status/"
             try:
                 async with aiohttp.ClientSession() as session:
@@ -776,6 +780,7 @@ async def scanstatus(ctx):
                         health_status = health_data.get("status", "unknown")
                         health_version = health_data.get("version", "unknown")
                     # 3. Check local status endpoint for workers
+                    status_url = "http://127.0.0.1:7272/status/"
                     print(f"[scanstatus] {desc}: Checking local status at {status_url}")
                     async with session.get(status_url, timeout=8) as resp:
                         status_text = await resp.text()
@@ -802,6 +807,40 @@ async def scanstatus(ctx):
                 print(f"[scanstatus] {desc}: Exception during public/local status fetch: {e}")
                 traceback.print_exc()
                 return False, " (worker status error)"
+        # Special handling for Data Receiver
+        elif desc == "Data Receiver":
+            health_url = "http://127.0.0.1:9001/health"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    print(f"[scanstatus] {desc}: Checking health at {health_url}")
+                    async with session.get(health_url, timeout=8) as resp:
+                        if resp.status != 200:
+                            print(f"[scanstatus] {desc}: Health check failed with status {resp.status}")
+                            return False, f" (health {resp.status})"
+                        health_data = await resp.json()
+                        health_status = health_data.get("status", "unknown")
+                        health_version = health_data.get("version", "unknown")
+                        return True, f" (status: {health_status}, version: {health_version})"
+            except Exception as e:
+                print(f"[scanstatus] {desc}: Exception during health check: {e}")
+                return False, " (health error)"
+        # Special handling for Map Services health check
+        elif desc == "Map Services":
+            map_health_url = "http://192.168.3.120:8080/api/health"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    print(f"[scanstatus] {desc}: Checking health at {map_health_url}")
+                    async with session.get(map_health_url, timeout=8) as resp:
+                        if resp.status != 200:
+                            print(f"[scanstatus] {desc}: Health check failed with status {resp.status}")
+                            return False, f" (health {resp.status})"
+                        health_data = await resp.json()
+                        health_status = health_data.get("status", "unknown")
+                        health_version = health_data.get("version", "unknown")
+                        return True, f" (status: {health_status}, version: {health_version})"
+            except Exception as e:
+                print(f"[scanstatus] {desc}: Exception during health check: {e}")
+                return False, " (health error)"
         else:
             try:
                 async with aiohttp.ClientSession() as session:
