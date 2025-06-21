@@ -907,5 +907,50 @@ async def scanstatus(ctx):
         embed.description = "Issues have been detected"
         embed.color = discord.Color.red()
     await status_message.edit(embed=embed)
+
+@bot.command()
+async def workers(ctx, *, areaname: str = None):
+    """
+    Usage: !workers <area name>
+    Shows the active/expected workers for the specified area.
+    """
+    if not areaname:
+        await ctx.send("Please provide an area name. Example: `!workers Downtown`")
+        return
+
+    status_url = "http://127.0.0.1:7272/status/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(status_url, timeout=8) as resp:
+                if resp.status not in (200, 202):
+                    await ctx.send(f"Could not fetch worker status (HTTP {resp.status}).")
+                    return
+                try:
+                    data = await resp.json()
+                except Exception as json_exc:
+                    await ctx.send("Failed to parse worker status JSON.")
+                    return
+
+                # Find the area (case-insensitive match)
+                area = next(
+                    (a for a in data.get("areas", []) if a.get("name", "").lower() == areaname.lower()),
+                    None
+                )
+                if not area:
+                    await ctx.send(f"Area '{areaname}' not found.")
+                    return
+
+                total_expected = 0
+                total_active = 0
+                for wm in area.get("worker_managers", []):
+                    total_expected += wm.get("expected_workers", 0)
+                    total_active += wm.get("active_workers", 0)
+
+                await ctx.send(
+                    f"**{area.get('name', areaname)}**: {total_active}/{total_expected} workers active."
+                )
+    except Exception as e:
+        await ctx.send(f"Error fetching worker info: {e}")
+
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
