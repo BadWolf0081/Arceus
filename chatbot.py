@@ -764,16 +764,16 @@ async def scanstatus(ctx):
                             print(f"[scanstatus] {desc}: Main site check failed with status {resp.status}")
                             return False, f" (main site {resp.status})"
                     # Now, login and get worker status
-                    login_url = "https://dragonite2.pokescans.ca/"
+                    login_url = "https://dragonite2.pokescans.ca/api/login"
                     status_url = "https://dragonite2.pokescans.ca/api/status"
                     payload = {"username": "SysAdmin", "password": "GetFucked"}
                     headers = {"Content-Type": "application/json"}
                     print(f"[scanstatus] {desc}: POST login to {login_url} with payload {payload}")
                     async with session.post(login_url, json=payload, headers=headers, timeout=8) as login_resp:
                         login_text = await login_resp.text()
-                        print(f"[scanstatus] {desc}: Login response status {login_resp.status}, body: {login_text}")
+                        print(f"[scanstatus] {desc}: Login POST {login_url} status {login_resp.status}, body: {login_text}")
                         if login_resp.status != 200:
-                            print(f"[scanstatus] {desc}: Login failed with status {login_resp.status}")
+                            print(f"[scanstatus] {desc}: Login failed with status {login_resp.status} at {login_url}")
                             return False, f" (login failed: {login_resp.status})"
                         # Extract cookies from the login response
                         jar = session.cookie_jar.filter_cookies(login_url)
@@ -782,14 +782,14 @@ async def scanstatus(ctx):
                         print(f"[scanstatus] {desc}: GET status from {status_url} with cookies {cookies}")
                         async with session.get(status_url, cookies=cookies, timeout=8) as status_resp:
                             status_text = await status_resp.text()
-                            print(f"[scanstatus] {desc}: Status response {status_resp.status}, body: {status_text[:200]}")
+                            print(f"[scanstatus] {desc}: Status GET {status_url} status {status_resp.status}, body: {status_text[:200]}")
                             if status_resp.status != 200:
-                                print(f"[scanstatus] {desc}: Status fetch failed with status {status_resp.status}")
+                                print(f"[scanstatus] {desc}: Status fetch failed with status {status_resp.status} at {status_url}")
                                 return False, f" (status fetch failed: {status_resp.status})"
                             try:
                                 data = await status_resp.json()
                             except Exception as json_exc:
-                                print(f"[scanstatus] {desc}: Failed to parse JSON from status: {json_exc}")
+                                print(f"[scanstatus] {desc}: Failed to parse JSON from status at {status_url}: {json_exc}")
                                 return False, " (status not JSON)"
                             # Sum up all expected_workers and active_workers from all areas and all worker_managers
                             total_expected = 0
@@ -813,10 +813,10 @@ async def scanstatus(ctx):
                         if resp.status == 200:
                             return True, ""
                         else:
-                            print(f"[scanstatus] {desc}: Site check failed with status {resp.status}")
+                            print(f"[scanstatus] {desc}: Site check failed with status {resp.status} at {url}")
                             return False, f" ({resp.status})"
             except Exception as e:
-                print(f"[scanstatus] {desc}: Exception during site check: {e}")
+                print(f"[scanstatus] {desc}: Exception during site check for {url}: {e}")
                 return False, " (exception)"
 
     # Check each site and update the embed as results come in
