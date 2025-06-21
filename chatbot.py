@@ -819,8 +819,11 @@ async def scanstatus(ctx):
                             return False, f" (health {resp.status})"
                         health_data = await resp.json()
                         health_status = health_data.get("status", "unknown")
-                        health_version = health_data.get("version", "unknown")
-                        return True, f" (status: {health_status}, version: {health_version})"
+                        health_version = health_data.get("version")
+                        if health_version:
+                            return True, f" (status: {health_status}, version: {health_version})"
+                        else:
+                            return True, f" (status: {health_status})"
             except Exception as e:
                 print(f"[scanstatus] {desc}: Exception during health check: {e}")
                 return False, " (health error)"
@@ -836,8 +839,11 @@ async def scanstatus(ctx):
                             return False, f" (health {resp.status})"
                         health_data = await resp.json()
                         health_status = health_data.get("status", "unknown")
-                        health_version = health_data.get("version", "unknown")
-                        return True, f" (status: {health_status}, version: {health_version})"
+                        health_version = health_data.get("version")
+                        if health_version:
+                            return True, f" (status: {health_status}, version: {health_version})"
+                        else:
+                            return True, f" (status: {health_status})"
             except Exception as e:
                 print(f"[scanstatus] {desc}: Exception during health check: {e}")
                 return False, " (health error)"
