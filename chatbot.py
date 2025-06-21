@@ -769,8 +769,10 @@ async def scanstatus(ctx):
                     async with session.post(login_url, json=payload, headers=headers, timeout=8) as login_resp:
                         if login_resp.status != 200:
                             return True, " (login failed)"
-                        # Use session cookie for status request
-                        cookies = login_resp.cookies
+                        # Extract cookies from the login response
+                        jar = session.cookie_jar.filter_cookies(login_url)
+                        cookies = {k: v.value for k, v in jar.items()}
+                        # Use cookies for status request
                         async with session.get(status_url, cookies=cookies, timeout=8) as status_resp:
                             if status_resp.status != 200:
                                 return True, " (status fetch failed)"
@@ -784,7 +786,7 @@ async def scanstatus(ctx):
                                     total_active += wm.get("active_workers", 0)
                             return True, f" ({total_active}/{total_expected} workers)"
             except Exception as e:
-                return False, ""
+                return False, " (login error)"
         else:
             try:
                 async with aiohttp.ClientSession() as session:
