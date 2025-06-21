@@ -754,7 +754,6 @@ async def scanstatus(ctx):
     async def check_site(url, desc):
         # Special handling for Worker Controller: check website, then local status
         if desc == "Worker Controller":
-            # 1. Check if the public website is up
             public_url = "https://dragonite2.pokescans.ca"
             local_status_url = "http://127.0.0.1:7272/status/"
             try:
@@ -770,7 +769,7 @@ async def scanstatus(ctx):
                     async with session.get(local_status_url, timeout=8) as resp:
                         status_text = await resp.text()
                         print(f"[scanstatus] {desc}: Status GET {local_status_url} status {resp.status}, body: {status_text[:200]}")
-                        if resp.status != 200:
+                        if resp.status not in (200, 202):
                             print(f"[scanstatus] {desc}: Status fetch failed with status {resp.status} at {local_status_url}")
                             return False, f" (status fetch failed: {resp.status})"
                         try:
