@@ -719,6 +719,59 @@ async def leaderboard(ctx):
 
     embed.description = f"Here are the top 10 users by points!\n\n{leaderboard_text}"
     await ctx.send(embed=embed)
+@bot.command()
+async def scanstatus(ctx):
+    """
+    Check if specific websites are up and running and report their status.
+    Shows a red X for each site initially, then updates to a green check as each site is confirmed up.
+    """
+    sites = [
+        ("https://map.pokescans.ca", "Map Services"),
+        ("https://rotom2.pokescans.ca", "Device Controller"),
+        ("https://dragonite2.pokescans.ca", "Worker Controller"),
+        ("https://juniper2.pokescans.ca", "Juniper Site"),
+    ]
 
+    status_emojis = {True: "🟩", False: "❌"}
+    site_status = {url: False for url, _ in sites}
+
+    # Initial embed with all red X's
+    embed = discord.Embed(
+        title="Pokescans Service Status",
+        color=discord.Color.orange(),
+        description="Checking service status. Please wait..."
+    )
+    for url, desc in sites:
+        embed.add_field(
+            name=desc,
+            value=f"{status_emojis[False]} {desc}",
+            inline=False
+        )
+    status_message = await ctx.send(embed=embed)
+
+    # Now check each site asynchronously and update the embed as results come in
+    async def check_site(url):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=8) as resp:
+                    if resp.status == 200:
+                        return True
+                    else:
+                        return False
+        except Exception:
+            return False
+
+    for idx, (url, desc) in enumerate(sites):
+        is_up = await check_site(url)
+        site_status[url] = is_up
+
+        # Update the embed field for this site
+        embed.set_field_at(
+            idx,
+            name=desc,
+            value=f"{status_emojis[is_up]} {desc}",
+            inline=False
+        )
+        await status_message.edit(embed=embed)
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
