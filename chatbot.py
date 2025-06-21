@@ -759,23 +759,28 @@ async def scanstatus(ctx):
                     # First, check the main site
                     async with session.get(url, timeout=8) as resp:
                         if resp.status != 200:
+                            print(f"[scanstatus] {desc}: Main site check failed with status {resp.status}")
                             return False, ""
                     # Now, login and get worker status
                     login_url = "https://dragonite2.pokescans.ca/api/login"
                     status_url = "https://dragonite2.pokescans.ca/api/status"
                     payload = {"username": "SysAdmin", "password": "GetFucked"}
                     headers = {"Content-Type": "application/json"}
-                    # Login to get session cookie
                     async with session.post(login_url, json=payload, headers=headers, timeout=8) as login_resp:
+                        login_text = await login_resp.text()
+                        print(f"[scanstatus] {desc}: Login response status {login_resp.status}, body: {login_text}")
                         if login_resp.status != 200:
-                            return True, " (login failed)"
+                            return True, f" (login failed: {login_resp.status})"
                         # Extract cookies from the login response
                         jar = session.cookie_jar.filter_cookies(login_url)
                         cookies = {k: v.value for k, v in jar.items()}
+                        print(f"[scanstatus] {desc}: Cookies after login: {cookies}")
                         # Use cookies for status request
                         async with session.get(status_url, cookies=cookies, timeout=8) as status_resp:
+                            status_text = await status_resp.text()
+                            print(f"[scanstatus] {desc}: Status response {status_resp.status}, body: {status_text[:200]}")
                             if status_resp.status != 200:
-                                return True, " (status fetch failed)"
+                                return True, f" (status fetch failed: {status_resp.status})"
                             data = await status_resp.json()
                             # Sum up all expected_workers and active_workers from all areas and all worker_managers
                             total_expected = 0
@@ -786,6 +791,9 @@ async def scanstatus(ctx):
                                     total_active += wm.get("active_workers", 0)
                             return True, f" ({total_active}/{total_expected} workers)"
             except Exception as e:
+                import traceback
+                print(f"[scanstatus] {desc}: Exception during login/status fetch: {e}")
+                traceback.print_exc()
                 return False, " (login error)"
         else:
             try:
@@ -794,8 +802,10 @@ async def scanstatus(ctx):
                         if resp.status == 200:
                             return True, ""
                         else:
+                            print(f"[scanstatus] {desc}: Site check failed with status {resp.status}")
                             return False, ""
-            except Exception:
+            except Exception as e:
+                print(f"[scanstatus] {desc}: Exception during site check: {e}")
                 return False, ""
 
     # Check each site and update the embed as results come in
