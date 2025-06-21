@@ -754,7 +754,7 @@ async def scanstatus(ctx):
     async def check_site(url, desc):
         # Special handling for Worker Controller: use direct status URL, no login
         if desc == "Worker Controller":
-            status_url = "http://192.168.3.120:7272/status"
+            status_url = "http://127.0.0.1:7272/status"
             try:
                 async with aiohttp.ClientSession() as session:
                     print(f"[scanstatus] {desc}: Checking status at {status_url}")
