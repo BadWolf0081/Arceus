@@ -752,22 +752,31 @@ async def scanstatus(ctx):
     status_message = await ctx.send(embed=embed)
 
     async def check_site(url, desc):
-        # Special handling for Worker Controller: use direct status URL, no login
+        # Special handling for Worker Controller: check website, then local status
         if desc == "Worker Controller":
-            status_url = "http://127.0.0.1:7272/status"
+            # 1. Check if the public website is up
+            public_url = "https://dragonite2.pokescans.ca"
+            local_status_url = "http://127.0.0.1:7272/status/"
             try:
                 async with aiohttp.ClientSession() as session:
-                    print(f"[scanstatus] {desc}: Checking status at {status_url}")
-                    async with session.get(status_url, timeout=8) as resp:
-                        status_text = await resp.text()
-                        print(f"[scanstatus] {desc}: Status GET {status_url} status {resp.status}, body: {status_text[:200]}")
+                    print(f"[scanstatus] {desc}: Checking public site at {public_url}")
+                    async with session.get(public_url, timeout=8) as resp:
+                        print(f"[scanstatus] {desc}: Public site GET {public_url} status {resp.status}")
                         if resp.status != 200:
-                            print(f"[scanstatus] {desc}: Status fetch failed with status {resp.status} at {status_url}")
+                            print(f"[scanstatus] {desc}: Public site check failed with status {resp.status}")
+                            return False, f" (public site {resp.status})"
+                    # 2. If public site is up, check local status endpoint
+                    print(f"[scanstatus] {desc}: Checking local status at {local_status_url}")
+                    async with session.get(local_status_url, timeout=8) as resp:
+                        status_text = await resp.text()
+                        print(f"[scanstatus] {desc}: Status GET {local_status_url} status {resp.status}, body: {status_text[:200]}")
+                        if resp.status != 200:
+                            print(f"[scanstatus] {desc}: Status fetch failed with status {resp.status} at {local_status_url}")
                             return False, f" (status fetch failed: {resp.status})"
                         try:
                             data = await resp.json()
                         except Exception as json_exc:
-                            print(f"[scanstatus] {desc}: Failed to parse JSON from status at {status_url}: {json_exc}")
+                            print(f"[scanstatus] {desc}: Failed to parse JSON from status at {local_status_url}: {json_exc}")
                             return False, " (status not JSON)"
                         # Sum up all expected_workers and active_workers from all areas and all worker_managers
                         total_expected = 0
@@ -779,7 +788,7 @@ async def scanstatus(ctx):
                         return True, f" ({total_active}/{total_expected} workers)"
             except Exception as e:
                 import traceback
-                print(f"[scanstatus] {desc}: Exception during status fetch: {e}")
+                print(f"[scanstatus] {desc}: Exception during public/local status fetch: {e}")
                 traceback.print_exc()
                 return False, " (worker status error)"
         else:
