@@ -752,70 +752,36 @@ async def scanstatus(ctx):
     status_message = await ctx.send(embed=embed)
 
     async def check_site(url, desc):
-        if "dragonite2.pokescans.ca" in url:
+        # Special handling for Worker Controller: use direct status URL, no login
+        if desc == "Worker Controller":
+            status_url = "http://192.168.3.120:7272/status"
             try:
                 async with aiohttp.ClientSession() as session:
-                    # 1. Check main site
-                    print(f"[scanstatus] {desc}: Checking main site {url}")
-                    async with session.get(url, timeout=8) as resp:
-                        print(f"[scanstatus] {desc}: Main site GET {url} status {resp.status}")
+                    print(f"[scanstatus] {desc}: Checking status at {status_url}")
+                    async with session.get(status_url, timeout=8) as resp:
+                        status_text = await resp.text()
+                        print(f"[scanstatus] {desc}: Status GET {status_url} status {resp.status}, body: {status_text[:200]}")
                         if resp.status != 200:
-                            print(f"[scanstatus] {desc}: Main site check failed with status {resp.status}")
-                            return False, f" (main site {resp.status})"
-
-                    # 2. Try /api/login (current), /login, and root for debugging
-                    login_endpoints = [
-                        "https://dragonite2.pokescans.ca/api/login",
-                        "https://dragonite2.pokescans.ca/login",
-                        "https://dragonite2.pokescans.ca/"
-                    ]
-                    status_url = "https://dragonite2.pokescans.ca/api/status"
-                    payload = {"username": "SysAdmin", "password": "GetFucked"}
-                    headers = {"Content-Type": "application/json"}
-
-                    for login_url in login_endpoints:
-                        print(f"[scanstatus] {desc}: Attempting POST login to {login_url} with payload {payload}")
+                            print(f"[scanstatus] {desc}: Status fetch failed with status {resp.status} at {status_url}")
+                            return False, f" (status fetch failed: {resp.status})"
                         try:
-                            async with session.post(login_url, json=payload, headers=headers, timeout=8) as login_resp:
-                                login_text = await login_resp.text()
-                                print(f"[scanstatus] {desc}: Login POST {login_url} status {login_resp.status}, body: {login_text[:200]}")
-                                if login_resp.status == 200:
-                                    # Extract cookies from the login response
-                                    jar = session.cookie_jar.filter_cookies(login_url)
-                                    cookies = {k: v.value for k, v in jar.items()}
-                                    print(f"[scanstatus] {desc}: Cookies after login from {login_url}: {cookies}")
-                                    print(f"[scanstatus] {desc}: GET status from {status_url} with cookies {cookies}")
-                                    async with session.get(status_url, cookies=cookies, timeout=8) as status_resp:
-                                        status_text = await status_resp.text()
-                                        print(f"[scanstatus] {desc}: Status GET {status_url} status {status_resp.status}, body: {status_text[:200]}")
-                                        if status_resp.status != 200:
-                                            print(f"[scanstatus] {desc}: Status fetch failed with status {status_resp.status} at {status_url}")
-                                            return False, f" (status fetch failed: {status_resp.status})"
-                                        try:
-                                            data = await status_resp.json()
-                                        except Exception as json_exc:
-                                            print(f"[scanstatus] {desc}: Failed to parse JSON from status at {status_url}: {json_exc}")
-                                            return False, " (status not JSON)"
-                                        # Sum up all expected_workers and active_workers from all areas and all worker_managers
-                                        total_expected = 0
-                                        total_active = 0
-                                        for area in data.get("areas", []):
-                                            for wm in area.get("worker_managers", []):
-                                                total_expected += wm.get("expected_workers", 0)
-                                                total_active += wm.get("active_workers", 0)
-                                        return True, f" ({total_active}/{total_expected} workers)"
-                                else:
-                                    print(f"[scanstatus] {desc}: Login failed with status {login_resp.status} at {login_url}")
-                        except Exception as login_exc:
-                            print(f"[scanstatus] {desc}: Exception during POST to {login_url}: {login_exc}")
-
-                    print(f"[scanstatus] {desc}: All login endpoints failed.")
-                    return False, " (login failed: all endpoints)"
+                            data = await resp.json()
+                        except Exception as json_exc:
+                            print(f"[scanstatus] {desc}: Failed to parse JSON from status at {status_url}: {json_exc}")
+                            return False, " (status not JSON)"
+                        # Sum up all expected_workers and active_workers from all areas and all worker_managers
+                        total_expected = 0
+                        total_active = 0
+                        for area in data.get("areas", []):
+                            for wm in area.get("worker_managers", []):
+                                total_expected += wm.get("expected_workers", 0)
+                                total_active += wm.get("active_workers", 0)
+                        return True, f" ({total_active}/{total_expected} workers)"
             except Exception as e:
                 import traceback
-                print(f"[scanstatus] {desc}: Exception during login/status fetch: {e}")
+                print(f"[scanstatus] {desc}: Exception during status fetch: {e}")
                 traceback.print_exc()
-                return False, " (login error)"
+                return False, " (worker status error)"
         else:
             try:
                 async with aiohttp.ClientSession() as session:
