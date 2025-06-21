@@ -762,7 +762,7 @@ async def scanstatus(ctx):
                             print(f"[scanstatus] {desc}: Main site check failed with status {resp.status}")
                             return False, ""
                     # Now, login and get worker status
-                    login_url = "https://dragonite2.pokescans.ca/api/login"
+                    login_url = "https://dragonite2.pokescans.ca/"
                     status_url = "https://dragonite2.pokescans.ca/api/status"
                     payload = {"username": "SysAdmin", "password": "GetFucked"}
                     headers = {"Content-Type": "application/json"}
