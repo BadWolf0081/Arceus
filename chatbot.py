@@ -724,6 +724,7 @@ async def scanstatus(ctx):
     """
     Check if specific websites are up and running and report their status.
     Shows a red X for each site initially, then updates to a green check as each site is confirmed up.
+    For dragonite2, also shows (active_workers/expected_workers) from all areas.
     """
     sites = [
         ("https://map.pokescans.ca", "Map Services"),
@@ -734,6 +735,7 @@ async def scanstatus(ctx):
 
     status_emojis = {True: "🟩", False: "❌"}
     site_status = {url: False for url, _ in sites}
+    dragonite_workers_text = ""
 
     # Initial embed with all red X's
     embed = discord.Embed(
@@ -749,29 +751,74 @@ async def scanstatus(ctx):
         )
     status_message = await ctx.send(embed=embed)
 
-    # Now check each site asynchronously and update the embed as results come in
-    async def check_site(url):
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=8) as resp:
-                    if resp.status == 200:
-                        return True
-                    else:
-                        return False
-        except Exception:
-            return False
+    async def check_site(url, desc):
+        # Special handling for dragonite2
+        if "dragonite2.pokescans.ca" in url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # First, check the main site
+                    async with session.get(url, timeout=8) as resp:
+                        if resp.status != 200:
+                            return False, ""
+                    # Now, login and get worker status
+                    login_url = "https://dragonite2.pokescans.ca/api/login"
+                    status_url = "https://dragonite2.pokescans.ca/api/status"
+                    payload = {"username": "SysAdmin", "password": "GetFucked"}
+                    headers = {"Content-Type": "application/json"}
+                    # Login to get session cookie
+                    async with session.post(login_url, json=payload, headers=headers, timeout=8) as login_resp:
+                        if login_resp.status != 200:
+                            return True, " (login failed)"
+                        # Use session cookie for status request
+                        cookies = login_resp.cookies
+                        async with session.get(status_url, cookies=cookies, timeout=8) as status_resp:
+                            if status_resp.status != 200:
+                                return True, " (status fetch failed)"
+                            data = await status_resp.json()
+                            # Sum up all expected_workers and active_workers from all areas and all worker_managers
+                            total_expected = 0
+                            total_active = 0
+                            for area in data.get("areas", []):
+                                for wm in area.get("worker_managers", []):
+                                    total_expected += wm.get("expected_workers", 0)
+                                    total_active += wm.get("active_workers", 0)
+                            return True, f" ({total_active}/{total_expected} workers)"
+            except Exception as e:
+                return False, ""
+        else:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=8) as resp:
+                        if resp.status == 200:
+                            return True, ""
+                        else:
+                            return False, ""
+            except Exception:
+                return False, ""
 
+    # Check each site and update the embed as results come in
+    all_ok = True
     for idx, (url, desc) in enumerate(sites):
-        is_up = await check_site(url)
+        is_up, extra = await check_site(url, desc)
         site_status[url] = is_up
-
-        # Update the embed field for this site
+        if not is_up:
+            all_ok = False
+        value = f"{status_emojis[is_up]} {desc}{extra}"
         embed.set_field_at(
             idx,
             name=desc,
-            value=f"{status_emojis[is_up]} {desc}",
+            value=value,
             inline=False
         )
         await status_message.edit(embed=embed)
+
+    # Update description after all checks
+    if all_ok:
+        embed.description = "All services are running OK."
+        embed.color = discord.Color.green()
+    else:
+        embed.description = "Issues have been detected"
+        embed.color = discord.Color.red()
+    await status_message.edit(embed=embed)
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
