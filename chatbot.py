@@ -731,7 +731,8 @@ async def scanstatus(ctx):
         ("https://rotom2.pokescans.ca", "Device Controller"),
         ("https://dragonite2.pokescans.ca", "Worker Controller"),
         # Data Receiver will be added after Worker Controller
-        ("https://juniper2.pokescans.ca", "Juniper Site"),
+        # Juniper Core will be added before Juniper Website
+        ("https://juniper2.pokescans.ca", "Juniper Website"),
     ]
 
     status_emojis = {True: "🟩", False: "❌"}
@@ -740,6 +741,10 @@ async def scanstatus(ctx):
     # Insert Data Receiver after Worker Controller
     data_receiver_index = 3  # After Worker Controller (index 2)
     sites.insert(data_receiver_index, ("http://127.0.0.1:9001/health", "Data Receiver"))
+
+    # Insert Juniper Core before Juniper Website (which is now renamed)
+    juniper_core_index = len(sites) - 1  # Before last (Juniper Website)
+    sites.insert(juniper_core_index, ("http://192.168.3.120:3030/health", "Juniper Core"))
 
     # Initial embed with all red X's
     embed = discord.Embed(
@@ -824,6 +829,22 @@ async def scanstatus(ctx):
                             return True, f" (status: {health_status}, version: {health_version})"
                         else:
                             return True, f" (status: {health_status})"
+            except Exception as e:
+                print(f"[scanstatus] {desc}: Exception during health check: {e}")
+                return False, " (health error)"
+        # Special handling for Juniper Core
+        elif desc == "Juniper Core":
+            health_url = "http://192.168.3.120:3030/health"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    print(f"[scanstatus] {desc}: Checking health at {health_url}")
+                    async with session.get(health_url, timeout=8) as resp:
+                        if resp.status != 200:
+                            print(f"[scanstatus] {desc}: Health check failed with status {resp.status}")
+                            return False, f" (health {resp.status})"
+                        health_data = await resp.json()
+                        webserver_status = health_data.get("webserver", "unknown")
+                        return True, f" (status: {webserver_status})"
             except Exception as e:
                 print(f"[scanstatus] {desc}: Exception during health check: {e}")
                 return False, " (health error)"
