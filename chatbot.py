@@ -952,5 +952,34 @@ async def workers(ctx, *, areaname: str = None):
     except Exception as e:
         await ctx.send(f"Error fetching worker info: {e}")
 
+@bot.command()
+async def areas(ctx):
+    """
+    Lists all active area names from the worker status API.
+    Usage: !areas
+    """
+    status_url = "http://127.0.0.1:7272/status/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(status_url, timeout=8) as resp:
+                if resp.status not in (200, 202):
+                    await ctx.send(f"Could not fetch area list (HTTP {resp.status}).")
+                    return
+                try:
+                    data = await resp.json()
+                except Exception:
+                    await ctx.send("Failed to parse area list JSON.")
+                    return
+
+                area_names = [a.get("name") for a in data.get("areas", []) if a.get("name")]
+                if not area_names:
+                    await ctx.send("No active areas found.")
+                    return
+
+                area_list = "\n".join(f"- {name}" for name in area_names)
+                await ctx.send(f"**Active Areas:**\n{area_list}")
+    except Exception as e:
+        await ctx.send(f"Error fetching area list: {e}")
+
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
