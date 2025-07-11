@@ -14,6 +14,7 @@ import aiohttp
 import configparser
 import time
 import base64
+import re
 
 # ------------------------------------------------------------------
 # Load configuration from config.ini
@@ -137,7 +138,6 @@ async def on_ready():
 # ------------------------------------------------------------------
 # Dynamic Pokemon Trivia Commands (One Correct Answer Only)
 # ------------------------------------------------------------------
-import re
 
 @bot.command()
 async def trivia(ctx):
@@ -388,6 +388,48 @@ async def ask(ctx, *, query: str = None):
         await ctx.send("Please provide a question or query after `!ask`.")
         return
 
+    # --- Workers intent detection ---
+    # Example: "how many workers are active in Brampton"
+    match = re.search(r"workers.*in ([\w\s\-]+)", query, re.IGNORECASE)
+    if match:
+        areaname = match.group(1).strip()
+        # Reuse the logic from !workers
+        status_url = "http://127.0.0.1:7272/status/"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(status_url, timeout=8) as resp:
+                    if resp.status not in (200, 202):
+                        await ctx.send(f"Could not fetch worker status (HTTP {resp.status}).")
+                        return
+                    try:
+                        data = await resp.json()
+                    except Exception:
+                        await ctx.send("Failed to parse worker status JSON.")
+                        return
+
+                    area = next(
+                        (a for a in data.get("areas", []) if a.get("name", "").lower() == areaname.lower()),
+                        None
+                    )
+                    if not area:
+                        await ctx.send(f"Area '{areaname}' not found.")
+                        return
+
+                    total_expected = 0
+                    total_active = 0
+                    for wm in area.get("worker_managers", []):
+                        total_expected += wm.get("expected_workers", 0)
+                        total_active += wm.get("active_workers", 0)
+
+                    await ctx.send(
+                        f"**{area.get('name', areaname)}**: {total_active}/{total_expected} workers active."
+                    )
+                    return  # Don't continue to OpenAI if handled
+        except Exception as e:
+            await ctx.send(f"Error fetching worker info: {e}")
+            return
+
+    # --- Normal OpenAI logic below (unchanged) ---
     user_id = str(ctx.author.id)
     context = user_context[user_id]
     if not context:
