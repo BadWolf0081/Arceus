@@ -583,7 +583,7 @@ async def image(ctx, *, prompt: str = None):
     try:
         combined_prompt = " ".join(msg["content"] for msg in context if msg["role"] == "user")
         response = await openai_client.images.generate(
-            model="gpt-image-1",
+            model="gpt-image-1.5",
             prompt=combined_prompt,
             n=1,
             size="1024x1024"
@@ -657,7 +657,7 @@ async def edit(ctx, *, prompt: str = None):
 
         # Pass files as (filename, bytes, mimetype)
         response = await openai_client.images.edit(
-            model="gpt-image-1",
+            model="gpt-image-1.5",
             image=("image.png", image_data, "image/png"),
             mask=("mask.png", mask_data, "image/png"),
             prompt=prompt,
