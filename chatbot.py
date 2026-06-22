@@ -160,13 +160,27 @@ async def login_to_dragonite(session):
     try:
         from playwright.async_api import async_playwright
     except ImportError as exc:
-        raise RuntimeError(
+        error_message = (
             "Playwright is not installed. Add it to requirements and install browser binaries before using startquest."
-        ) from exc
+        )
+        log_error(error_message, exc)
+        raise RuntimeError(error_message) from exc
 
     print("[startquest] Opening Dragonite login page in browser context")
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+        try:
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
+        except Exception as exc:
+            error_message = (
+                "Playwright failed to launch Chromium. The host is likely missing Linux browser libraries "
+                "required by the Playwright runtime."
+            )
+            print(f"[startquest] {error_message}")
+            log_error(error_message, exc)
+            raise RuntimeError(error_message) from exc
         try:
             page = await browser.new_page()
             await page.goto(login_page_url, wait_until="networkidle")
@@ -198,13 +212,27 @@ async def start_dragonite_quest(session, area_id):
     try:
         from playwright.async_api import async_playwright
     except ImportError as exc:
-        raise RuntimeError(
+        error_message = (
             "Playwright is not installed. Add it to requirements and install browser binaries before using startquest."
-        ) from exc
+        )
+        log_error(error_message, exc)
+        raise RuntimeError(error_message) from exc
 
     print("[startquest] Opening Dragonite quest URL in browser context")
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+        try:
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
+        except Exception as exc:
+            error_message = (
+                "Playwright failed to launch Chromium. The host is likely missing Linux browser libraries "
+                "required by the Playwright runtime."
+            )
+            print(f"[startquest] {error_message}")
+            log_error(error_message, exc)
+            raise RuntimeError(error_message) from exc
         try:
             page = await browser.new_page()
             response = await page.goto(quest_url, wait_until="networkidle")
