@@ -27,6 +27,10 @@ ALLOWED_CHANNEL_ID = int(config.get("discord", "allowed_channel_id"))
 TRIVIA_DRAW_ROLE_ID = int(config.get("discord", "trivia_draw_role_id"))
 OPENAI_API_KEY = config.get("openai", "api_key")
 waiting_image_url = config.get("bot", "waiting_image_url")
+ADMIN_USER_ID = config.getint("bot", "admin_user_id", fallback=-1)
+DRAGONITE_API_URL = config.get("dragonite", "api_url", fallback="").rstrip("/")
+DRAGONITE_USERNAME = config.get("dragonite", "username", fallback="")
+DRAGONITE_PASSWORD = config.get("dragonite", "password", fallback="")
 
 # ------------------------------------------------------------------
 # Set up OpenAI API (no change needed for AsyncOpenAI)
@@ -115,6 +119,41 @@ def is_allowed_channel(channel_id):
 
 def update_last_activity(user_id):
     user_last_activity[user_id] = datetime.now()
+
+async def fetch_area_by_name(session, area_name):
+    status_url = "http://127.0.0.1:7272/status/"
+    async with session.get(status_url, timeout=8) as resp:
+        if resp.status not in (200, 202):
+            raise RuntimeError(f"Could not fetch area list (HTTP {resp.status}).")
+
+        data = await resp.json()
+        area = next(
+            (a for a in data.get("areas", []) if a.get("name", "").lower() == area_name.lower()),
+            None
+        )
+        return area
+
+async def login_to_dragonite(session):
+    if not DRAGONITE_API_URL or not DRAGONITE_USERNAME or not DRAGONITE_PASSWORD:
+        raise RuntimeError("Dragonite API settings are not configured.")
+
+    login_url = f"{DRAGONITE_API_URL}/login"
+    payload = {
+        "username": DRAGONITE_USERNAME,
+        "password": DRAGONITE_PASSWORD,
+    }
+    async with session.post(login_url, data=payload, timeout=10, allow_redirects=True) as resp:
+        if resp.status not in (200, 204, 302, 303, 307, 308):
+            response_text = await resp.text()
+            raise RuntimeError(f"Dragonite login failed (HTTP {resp.status}): {response_text[:200]}")
+
+async def start_dragonite_quest(session, area_id):
+    quest_url = f"{DRAGONITE_API_URL}/api/quest/{area_id}/start"
+    async with session.get(quest_url, timeout=10) as resp:
+        response_text = await resp.text()
+        if resp.status not in (200, 202, 204):
+            raise RuntimeError(f"Quest start failed (HTTP {resp.status}): {response_text[:200]}")
+        return response_text
 
 @tasks.loop(minutes=1)
 async def auto_reset_inactive_users():
@@ -1053,6 +1092,41 @@ async def areas(ctx):
                 await ctx.send(f"**Active Areas:**\n{area_list}")
     except Exception as e:
         await ctx.send(f"Error fetching area list: {e}")
+
+@bot.command()
+async def startquest(ctx, *, areaname: str = None):
+    """
+    Start quests for a specific area using Dragonite.
+    Only the configured admin user can use this command.
+    """
+    if ctx.author.id != ADMIN_USER_ID:
+        await ctx.send("You do not have permission to use this command.")
+        return
+
+    if not areaname:
+        await ctx.send("Please provide an area name. Example: `!startquest Downtown`")
+        return
+
+    try:
+        async with aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar()) as session:
+            area = await fetch_area_by_name(session, areaname)
+            if not area:
+                await ctx.send(f"Area '{areaname}' not found.")
+                return
+
+            area_id = area.get("id")
+            if area_id is None:
+                await ctx.send(f"Area '{area.get('name', areaname)}' does not have a valid ID.")
+                return
+
+            await login_to_dragonite(session)
+            await start_dragonite_quest(session, area_id)
+
+            await ctx.send(
+                f"Started quests for **{area.get('name', areaname)}** (ID {area_id})."
+            )
+    except Exception as e:
+        await ctx.send(f"Error starting quests: {e}")
 
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
