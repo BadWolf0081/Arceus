@@ -145,14 +145,28 @@ async def login_to_dragonite(session):
     print(f"[startquest] Dragonite base URL: {DRAGONITE_API_URL}")
     print(f"[startquest] Dragonite origin URL: {origin_url}")
     print(f"[startquest] Dragonite login URL: {login_url}")
+    print(f"[startquest] Dragonite login username: {DRAGONITE_USERNAME}")
     payload = {
         "username": DRAGONITE_USERNAME,
         "password": DRAGONITE_PASSWORD,
     }
+    print("[startquest] Sending Dragonite login request via POST")
     async with session.post(login_url, data=payload, timeout=10, allow_redirects=True) as resp:
+        response_text = await resp.text()
+        print(f"[startquest] Dragonite login response status: {resp.status}")
+        print(f"[startquest] Dragonite login response url: {resp.url}")
+        print(f"[startquest] Dragonite login response history count: {len(resp.history)}")
+        for index, history_response in enumerate(resp.history, start=1):
+            print(
+                f"[startquest] Dragonite login redirect {index}: "
+                f"{history_response.status} -> {history_response.url}"
+            )
+        print(f"[startquest] Dragonite login response headers: {dict(resp.headers)}")
+        print(f"[startquest] Dragonite login response body: {response_text[:500]}")
         if resp.status not in (200, 204, 302, 303, 307, 308):
-            response_text = await resp.text()
-            raise RuntimeError(f"Dragonite login failed (HTTP {resp.status}): {response_text[:200]}")
+            raise RuntimeError(
+                f"Dragonite login failed (HTTP {resp.status}) at {resp.url}: {response_text[:200]}"
+            )
 
 async def start_dragonite_quest(session, area_id):
     origin_url = get_dragonite_origin_url()
@@ -160,8 +174,12 @@ async def start_dragonite_quest(session, area_id):
     print(f"[startquest] Dragonite quest URL: {quest_url}")
     async with session.get(quest_url, timeout=10) as resp:
         response_text = await resp.text()
+        print(f"[startquest] Dragonite quest response status: {resp.status}")
+        print(f"[startquest] Dragonite quest response url: {resp.url}")
+        print(f"[startquest] Dragonite quest response headers: {dict(resp.headers)}")
+        print(f"[startquest] Dragonite quest response body: {response_text[:500]}")
         if resp.status not in (200, 202, 204):
-            raise RuntimeError(f"Quest start failed (HTTP {resp.status}): {response_text[:200]}")
+            raise RuntimeError(f"Quest start failed (HTTP {resp.status}) at {resp.url}: {response_text[:200]}")
         return response_text
 
 @tasks.loop(minutes=1)
