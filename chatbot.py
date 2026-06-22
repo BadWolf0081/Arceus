@@ -183,16 +183,61 @@ async def login_to_dragonite(session):
             raise RuntimeError(error_message) from exc
         try:
             page = await browser.new_page()
-            await page.goto(login_page_url, wait_until="networkidle")
+            await page.goto(login_page_url, wait_until="domcontentloaded")
             print(f"[startquest] Dragonite page after goto: {page.url}")
             if "login" not in page.url.lower():
                 print("[startquest] Login page did not appear to load as expected.")
 
-            await page.fill("#username", DRAGONITE_USERNAME)
-            await page.fill("#password", DRAGONITE_PASSWORD)
+            username_selectors = [
+                "#username",
+                "input[name='username']",
+                "input[name='user']",
+                "input[type='email']",
+                "input[type='text']",
+            ]
+            password_selectors = [
+                "#password",
+                "input[name='password']",
+                "input[type='password']",
+            ]
+            submit_selectors = [
+                "button[type='submit']",
+                "input[type='submit']",
+                "button:has-text('Login')",
+                "button:has-text('Sign in')",
+            ]
+
+            async def resolve_selector(selectors, label):
+                for selector in selectors:
+                    try:
+                        await page.wait_for_selector(selector, state="visible", timeout=4000)
+                        return selector
+                    except Exception:
+                        continue
+
+                page_title = await page.title()
+                page_content = await page.content()
+                log_error(
+                    f"Could not locate {label} on Dragonite login page. URL={page.url}, title={page_title}"
+                )
+                log_error(f"Dragonite login HTML snapshot (first 2000 chars): {page_content[:2000]}")
+                raise RuntimeError(
+                    f"Could not locate {label} on Dragonite login page. Check errors.log for HTML snapshot."
+                )
+
+            username_selector = await resolve_selector(username_selectors, "username field")
+            password_selector = await resolve_selector(password_selectors, "password field")
+            submit_selector = await resolve_selector(submit_selectors, "submit button")
+
+            print(f"[startquest] Using username selector: {username_selector}")
+            print(f"[startquest] Using password selector: {password_selector}")
+            print(f"[startquest] Using submit selector: {submit_selector}")
+
+            await page.fill(username_selector, DRAGONITE_USERNAME)
+            await page.fill(password_selector, DRAGONITE_PASSWORD)
             print("[startquest] Submitting Dragonite login form")
-            await page.click('button[type="submit"]')
-            await page.wait_for_load_state("networkidle")
+            await page.click(submit_selector)
+            await page.wait_for_load_state("networkidle", timeout=20000)
             print(f"[startquest] Dragonite page after submit: {page.url}")
             print(f"[startquest] Dragonite page title after submit: {await page.title()}")
 
@@ -202,6 +247,7 @@ async def login_to_dragonite(session):
                 error_message = "Dragonite still appears to be on the login page after submission."
                 print(f"[startquest] {error_message}")
                 log_error(error_message)
+                raise RuntimeError(error_message)
         finally:
             await browser.close()
 
@@ -241,6 +287,10 @@ async def start_dragonite_quest(session, area_id):
             print(f"[startquest] Dragonite quest response status: {status_code}")
             print(f"[startquest] Dragonite quest response url: {page.url}")
             print(f"[startquest] Dragonite quest response body: {response_text[:500]}")
+            if "login" in page.url.lower():
+                error_message = "Quest start redirected back to login page. Authentication likely failed."
+                log_error(error_message)
+                raise RuntimeError(error_message)
             if status_code not in (200, 202, 204):
                 error_message = f"Quest start failed (HTTP {status_code}) at {page.url}"
                 log_error(error_message)
@@ -1201,27 +1251,33 @@ async def startquest(ctx, *, areaname: str = None):
         await ctx.send("Please provide an area name. Example: `!startquest Downtown`")
         return
 
+    status_message = await ctx.send(f"Starting quest flow for **{areaname}**...")
+
     try:
         async with aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar()) as session:
+            await status_message.edit(content=f"Resolving area **{areaname}**...")
             area = await fetch_area_by_name(session, areaname)
             if not area:
-                await ctx.send(f"Area '{areaname}' not found.")
+                await status_message.edit(content=f"Area '{areaname}' not found.")
                 return
 
             area_id = area.get("id")
             if area_id is None:
-                await ctx.send(f"Area '{area.get('name', areaname)}' does not have a valid ID.")
+                await status_message.edit(content=f"Area '{area.get('name', areaname)}' does not have a valid ID.")
                 return
 
+            await status_message.edit(content=f"Logging into Dragonite for **{area.get('name', areaname)}**...")
             await login_to_dragonite(session)
+
+            await status_message.edit(content=f"Starting quests for **{area.get('name', areaname)}** (ID {area_id})...")
             await start_dragonite_quest(session, area_id)
 
-            await ctx.send(
+            await status_message.edit(content=(
                 f"Started quests for **{area.get('name', areaname)}** (ID {area_id})."
-            )
+            ))
     except Exception as e:
         log_error(f"!startquest failed for area '{areaname}'", e)
-        await ctx.send("Error starting quests. Check the bot logs for details.")
+        await status_message.edit(content="Error starting quests. Check the bot logs for details.")
 
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
