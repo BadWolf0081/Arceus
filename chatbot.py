@@ -15,6 +15,7 @@ import configparser
 import time
 import base64
 import re
+import traceback
 from urllib.parse import urljoin
 
 # ------------------------------------------------------------------
@@ -137,6 +138,15 @@ async def fetch_area_by_name(session, area_name):
 def get_dragonite_origin_url():
     return DRAGONITE_API_URL.split("#", 1)[0].rstrip("/")
 
+def log_error(message, exc=None):
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    log_lines = [f"[{timestamp}] {message}"]
+    if exc is not None:
+        log_lines.append("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip())
+    log_lines.append("")
+    with open("errors.log", "a", encoding="utf-8") as log_file:
+        log_file.write("\n".join(log_lines))
+
 async def login_to_dragonite(session):
     if not DRAGONITE_API_URL or not DRAGONITE_USERNAME or not DRAGONITE_PASSWORD:
         raise RuntimeError("Dragonite API settings are not configured.")
@@ -175,7 +185,9 @@ async def login_to_dragonite(session):
             login_result = await page.locator("body").inner_text()
             print(f"[startquest] Dragonite login page body after submit: {login_result[:500]}")
             if "login" in page.url.lower() and "logout" not in login_result.lower():
-                print("[startquest] Dragonite still appears to be on the login page after submission.")
+                error_message = "Dragonite still appears to be on the login page after submission."
+                print(f"[startquest] {error_message}")
+                log_error(error_message)
         finally:
             await browser.close()
 
@@ -202,7 +214,9 @@ async def start_dragonite_quest(session, area_id):
             print(f"[startquest] Dragonite quest response url: {page.url}")
             print(f"[startquest] Dragonite quest response body: {response_text[:500]}")
             if status_code not in (200, 202, 204):
-                raise RuntimeError(f"Quest start failed (HTTP {status_code}) at {page.url}: {response_text[:200]}")
+                error_message = f"Quest start failed (HTTP {status_code}) at {page.url}"
+                log_error(error_message)
+                raise RuntimeError(error_message)
             return response_text
         finally:
             await browser.close()
@@ -1178,7 +1192,8 @@ async def startquest(ctx, *, areaname: str = None):
                 f"Started quests for **{area.get('name', areaname)}** (ID {area_id})."
             )
     except Exception as e:
-        await ctx.send(f"Error starting quests: {e}")
+        log_error(f"!startquest failed for area '{areaname}'", e)
+        await ctx.send("Error starting quests. Check the bot logs for details.")
 
 # Finally, run the bot
 bot.run(DISCORD_BOT_TOKEN)
