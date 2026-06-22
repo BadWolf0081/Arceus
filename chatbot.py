@@ -15,6 +15,7 @@ import configparser
 import time
 import base64
 import re
+from urllib.parse import urljoin
 
 # ------------------------------------------------------------------
 # Load configuration from config.ini
@@ -141,46 +142,70 @@ async def login_to_dragonite(session):
         raise RuntimeError("Dragonite API settings are not configured.")
 
     origin_url = get_dragonite_origin_url()
-    login_url = f"{origin_url}/login"
+    login_page_url = f"{origin_url}/#/login"
     print(f"[startquest] Dragonite base URL: {DRAGONITE_API_URL}")
     print(f"[startquest] Dragonite origin URL: {origin_url}")
-    print(f"[startquest] Dragonite login URL: {login_url}")
+    print(f"[startquest] Dragonite login page URL: {login_page_url}")
     print(f"[startquest] Dragonite login username: {DRAGONITE_USERNAME}")
-    payload = {
-        "username": DRAGONITE_USERNAME,
-        "password": DRAGONITE_PASSWORD,
-    }
-    print("[startquest] Sending Dragonite login request via POST")
-    async with session.post(login_url, data=payload, timeout=10, allow_redirects=True) as resp:
-        response_text = await resp.text()
-        print(f"[startquest] Dragonite login response status: {resp.status}")
-        print(f"[startquest] Dragonite login response url: {resp.url}")
-        print(f"[startquest] Dragonite login response history count: {len(resp.history)}")
-        for index, history_response in enumerate(resp.history, start=1):
-            print(
-                f"[startquest] Dragonite login redirect {index}: "
-                f"{history_response.status} -> {history_response.url}"
-            )
-        print(f"[startquest] Dragonite login response headers: {dict(resp.headers)}")
-        print(f"[startquest] Dragonite login response body: {response_text[:500]}")
-        if resp.status not in (200, 204, 302, 303, 307, 308):
-            raise RuntimeError(
-                f"Dragonite login failed (HTTP {resp.status}) at {resp.url}: {response_text[:200]}"
-            )
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "Playwright is not installed. Add it to requirements and install browser binaries before using startquest."
+        ) from exc
+
+    print("[startquest] Opening Dragonite login page in browser context")
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+        try:
+            page = await browser.new_page()
+            await page.goto(login_page_url, wait_until="networkidle")
+            print(f"[startquest] Dragonite page after goto: {page.url}")
+            if "login" not in page.url.lower():
+                print("[startquest] Login page did not appear to load as expected.")
+
+            await page.fill("#username", DRAGONITE_USERNAME)
+            await page.fill("#password", DRAGONITE_PASSWORD)
+            print("[startquest] Submitting Dragonite login form")
+            await page.click('button[type="submit"]')
+            await page.wait_for_load_state("networkidle")
+            print(f"[startquest] Dragonite page after submit: {page.url}")
+            print(f"[startquest] Dragonite page title after submit: {await page.title()}")
+
+            login_result = await page.locator("body").inner_text()
+            print(f"[startquest] Dragonite login page body after submit: {login_result[:500]}")
+            if "login" in page.url.lower() and "logout" not in login_result.lower():
+                print("[startquest] Dragonite still appears to be on the login page after submission.")
+        finally:
+            await browser.close()
 
 async def start_dragonite_quest(session, area_id):
     origin_url = get_dragonite_origin_url()
     quest_url = f"{origin_url}/api/quest/{area_id}/start"
     print(f"[startquest] Dragonite quest URL: {quest_url}")
-    async with session.get(quest_url, timeout=10) as resp:
-        response_text = await resp.text()
-        print(f"[startquest] Dragonite quest response status: {resp.status}")
-        print(f"[startquest] Dragonite quest response url: {resp.url}")
-        print(f"[startquest] Dragonite quest response headers: {dict(resp.headers)}")
-        print(f"[startquest] Dragonite quest response body: {response_text[:500]}")
-        if resp.status not in (200, 202, 204):
-            raise RuntimeError(f"Quest start failed (HTTP {resp.status}) at {resp.url}: {response_text[:200]}")
-        return response_text
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "Playwright is not installed. Add it to requirements and install browser binaries before using startquest."
+        ) from exc
+
+    print("[startquest] Opening Dragonite quest URL in browser context")
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
+        try:
+            page = await browser.new_page()
+            response = await page.goto(quest_url, wait_until="networkidle")
+            response_text = await page.locator("body").inner_text()
+            status_code = response.status if response else None
+            print(f"[startquest] Dragonite quest response status: {status_code}")
+            print(f"[startquest] Dragonite quest response url: {page.url}")
+            print(f"[startquest] Dragonite quest response body: {response_text[:500]}")
+            if status_code not in (200, 202, 204):
+                raise RuntimeError(f"Quest start failed (HTTP {status_code}) at {page.url}: {response_text[:200]}")
+            return response_text
+        finally:
+            await browser.close()
 
 @tasks.loop(minutes=1)
 async def auto_reset_inactive_users():

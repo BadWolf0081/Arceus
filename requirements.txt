@@ -8,6 +8,9 @@ openai>=1.30.5
 requests>=2.32
 aiohttp>=3.9
 
+# Browser automation for Dragonite login
+playwright>=1.45.0
+
 # Image processing
 Pillow>=10.3
 
