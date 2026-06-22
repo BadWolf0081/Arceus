@@ -138,6 +138,8 @@ async def login_to_dragonite(session):
         raise RuntimeError("Dragonite API settings are not configured.")
 
     login_url = f"{DRAGONITE_API_URL}/login"
+    print(f"[startquest] Dragonite base URL: {DRAGONITE_API_URL}")
+    print(f"[startquest] Dragonite login URL: {login_url}")
     payload = {
         "username": DRAGONITE_USERNAME,
         "password": DRAGONITE_PASSWORD,
@@ -149,6 +151,7 @@ async def login_to_dragonite(session):
 
 async def start_dragonite_quest(session, area_id):
     quest_url = f"{DRAGONITE_API_URL}/api/quest/{area_id}/start"
+    print(f"[startquest] Dragonite quest URL: {quest_url}")
     async with session.get(quest_url, timeout=10) as resp:
         response_text = await resp.text()
         if resp.status not in (200, 202, 204):
