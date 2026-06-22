@@ -998,6 +998,7 @@ async def workers(ctx, *, areaname: str = None):
 async def areas(ctx):
     """
     Lists all active area names from the worker status API.
+    Also shows the percentage of quests scanned for each area.
     Usage: !areas
     """
     status_url = "http://127.0.0.1:7272/status/"
@@ -1013,12 +1014,42 @@ async def areas(ctx):
                     await ctx.send("Failed to parse area list JSON.")
                     return
 
-                area_names = [a.get("name") for a in data.get("areas", []) if a.get("name")]
-                if not area_names:
+                areas = [a for a in data.get("areas", []) if a.get("name")]
+                if not areas:
                     await ctx.send("No active areas found.")
                     return
 
-                area_list = "\n".join(f"- {name}" for name in area_names)
+                async def get_quest_progress(area):
+                    area_id = area.get("id")
+                    area_name = area.get("name", "Unknown")
+                    if area_id is None:
+                        return f"- {area_name}: quest status unavailable"
+
+                    quest_url = f"http://127.0.0.1:7272/status/quest-area/{area_id}"
+                    try:
+                        async with session.get(quest_url, timeout=8) as quest_resp:
+                            if quest_resp.status not in (200, 202):
+                                return f"- {area_name}: quest status unavailable (HTTP {quest_resp.status})"
+
+                            try:
+                                quest_data = await quest_resp.json()
+                            except Exception:
+                                return f"- {area_name}: quest status unavailable (invalid JSON)"
+
+                            total = quest_data.get("total", 0)
+                            no_ar_quests = quest_data.get("no_ar_quests", 0)
+                            if not total:
+                                return f"- {area_name}: quest status unavailable"
+
+                            scanned_percent = (no_ar_quests / total) * 100
+                            return (
+                                f"- {area_name}: {scanned_percent:.1f}% scanned "
+                                f"({no_ar_quests}/{total})"
+                            )
+                    except Exception:
+                        return f"- {area_name}: quest status unavailable"
+
+                area_list = "\n".join(await asyncio.gather(*(get_quest_progress(area) for area in areas)))
                 await ctx.send(f"**Active Areas:**\n{area_list}")
     except Exception as e:
         await ctx.send(f"Error fetching area list: {e}")
