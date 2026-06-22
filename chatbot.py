@@ -133,12 +133,17 @@ async def fetch_area_by_name(session, area_name):
         )
         return area
 
+def get_dragonite_origin_url():
+    return DRAGONITE_API_URL.split("#", 1)[0].rstrip("/")
+
 async def login_to_dragonite(session):
     if not DRAGONITE_API_URL or not DRAGONITE_USERNAME or not DRAGONITE_PASSWORD:
         raise RuntimeError("Dragonite API settings are not configured.")
 
-    login_url = f"{DRAGONITE_API_URL}/login"
+    origin_url = get_dragonite_origin_url()
+    login_url = f"{origin_url}/login"
     print(f"[startquest] Dragonite base URL: {DRAGONITE_API_URL}")
+    print(f"[startquest] Dragonite origin URL: {origin_url}")
     print(f"[startquest] Dragonite login URL: {login_url}")
     payload = {
         "username": DRAGONITE_USERNAME,
@@ -150,7 +155,8 @@ async def login_to_dragonite(session):
             raise RuntimeError(f"Dragonite login failed (HTTP {resp.status}): {response_text[:200]}")
 
 async def start_dragonite_quest(session, area_id):
-    quest_url = f"{DRAGONITE_API_URL}/api/quest/{area_id}/start"
+    origin_url = get_dragonite_origin_url()
+    quest_url = f"{origin_url}/api/quest/{area_id}/start"
     print(f"[startquest] Dragonite quest URL: {quest_url}")
     async with session.get(quest_url, timeout=10) as resp:
         response_text = await resp.text()
