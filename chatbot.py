@@ -182,7 +182,8 @@ async def login_to_dragonite(session):
             log_error(error_message, exc)
             raise RuntimeError(error_message) from exc
         try:
-            page = await browser.new_page()
+            context = await browser.new_context()
+            page = await context.new_page()
             await page.goto(login_page_url, wait_until="domcontentloaded")
             print(f"[startquest] Dragonite page after goto: {page.url}")
             if "login" not in page.url.lower():
@@ -237,21 +238,42 @@ async def login_to_dragonite(session):
             await page.fill(password_selector, DRAGONITE_PASSWORD)
             print("[startquest] Submitting Dragonite login form")
             await page.click(submit_selector)
-            await page.wait_for_load_state("networkidle", timeout=20000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                # Some SPA logins do not reach network idle quickly; continue with state checks.
+                pass
             print(f"[startquest] Dragonite page after submit: {page.url}")
             print(f"[startquest] Dragonite page title after submit: {await page.title()}")
 
             login_result = await page.locator("body").inner_text()
             print(f"[startquest] Dragonite login page body after submit: {login_result[:500]}")
-            if "login" in page.url.lower() and "logout" not in login_result.lower():
+
+            login_success = False
+            for _ in range(5):
+                current_url = page.url.lower()
+                current_body = (await page.locator("body").inner_text()).lower()
+                if "login" not in current_url or "logout" in current_body:
+                    login_success = True
+                    break
+                await asyncio.sleep(1)
+
+            if not login_success:
                 error_message = "Dragonite still appears to be on the login page after submission."
                 print(f"[startquest] {error_message}")
-                log_error(error_message)
+                page_title = await page.title()
+                page_content = await page.content()
+                log_error(f"{error_message} URL={page.url}, title={page_title}")
+                log_error(f"Dragonite post-submit HTML snapshot (first 2000 chars): {page_content[:2000]}")
                 raise RuntimeError(error_message)
+
+            storage_state = await context.storage_state()
+            print(f"[startquest] Dragonite auth cookies captured: {len(storage_state.get('cookies', []))}")
+            return storage_state
         finally:
             await browser.close()
 
-async def start_dragonite_quest(session, area_id):
+async def start_dragonite_quest(session, area_id, storage_state=None):
     origin_url = get_dragonite_origin_url()
     quest_url = f"{origin_url}/api/quest/{area_id}/start"
     print(f"[startquest] Dragonite quest URL: {quest_url}")
@@ -280,8 +302,9 @@ async def start_dragonite_quest(session, area_id):
             log_error(error_message, exc)
             raise RuntimeError(error_message) from exc
         try:
-            page = await browser.new_page()
-            response = await page.goto(quest_url, wait_until="networkidle")
+            context = await browser.new_context(storage_state=storage_state)
+            page = await context.new_page()
+            response = await page.goto(quest_url, wait_until="domcontentloaded")
             response_text = await page.locator("body").inner_text()
             status_code = response.status if response else None
             print(f"[startquest] Dragonite quest response status: {status_code}")
@@ -1267,10 +1290,10 @@ async def startquest(ctx, *, areaname: str = None):
                 return
 
             await status_message.edit(content=f"Logging into Dragonite for **{area.get('name', areaname)}**...")
-            await login_to_dragonite(session)
+            auth_state = await login_to_dragonite(session)
 
             await status_message.edit(content=f"Starting quests for **{area.get('name', areaname)}** (ID {area_id})...")
-            await start_dragonite_quest(session, area_id)
+            await start_dragonite_quest(session, area_id, auth_state)
 
             await status_message.edit(content=(
                 f"Started quests for **{area.get('name', areaname)}** (ID {area_id})."
